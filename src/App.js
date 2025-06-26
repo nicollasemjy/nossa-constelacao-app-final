@@ -2,7 +2,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { getAnalytics } from "firebase/analytics"; // Adicionado importação para getAnalytics
+import { getAnalytics } from "firebase/analytics"; 
 
 // --- Firebase Configuration and Initialization ---
 // Adapta a configuração do Firebase para diferentes ambientes:
@@ -11,11 +11,12 @@ import { getAnalytics } from "firebase/analytics"; // Adicionado importação pa
 // 3. Fallback para ambiente local de desenvolvimento (usa valores fixos se env vars não definidas)
 
 let firebaseConfig = {};
-let appId = 'default-app-id-local-fallback'; // Valor padrão para desenvolvimento local sem vars de ambiente
-let initialAuthToken = null; // Token de autenticação inicial para o Canvas
+let appId = 'default-app-id-fallback'; // Valor padrão para desenvolvimento local ou caso appId não seja encontrado
+let initialAuthToken = null; // Token de autenticação inicial (apenas para ambiente Canvas)
 
-// Configuração do Firebase para o projeto 'minhas-reflexoes' (fallback ou para uso local/deploy)
-const MINHAS_REFLEXOES_FIREBASE_CONFIG = {
+// Configuração do Firebase para o projeto 'minhas-reflexoes' (FIXA - para fallback e clareza)
+// Estes são os VALORES REAIS do seu projeto Firebase "minhas-reflexoes"
+const MINHAS_REFLEXOES_FIREBASE_CONFIG_FIXA = {
   apiKey: "AIzaSyATKwnmsf8eDP9cvSWIs03QLv3PRb7P8FM",
   authDomain: "minhas-reflexoes.firebaseapp.com",
   projectId: "minhas-reflexoes",
@@ -36,58 +37,91 @@ if (isCanvasEnvironment) {
     appId = window.__app_id;
     initialAuthToken = window.__initial_auth_token;
   } catch (e) {
-    console.error("Erro ao fazer parse de __firebase_config no ambiente Canvas:", e);
-    // Em caso de erro no Canvas, usa a configuração padrão do projeto 'minhas-reflexoes'
-    firebaseConfig = MINHAS_REFLEXOES_FIREBASE_CONFIG;
-    appId = MINHAS_REFLEXOES_FIREBASE_CONFIG.appId;
+    console.error("Erro ao fazer parse de __firebase_config no ambiente Canvas, utilizando fallback:", e);
+    firebaseConfig = MINHAS_REFLEXOES_FIREBASE_CONFIG_FIXA;
+    appId = MINHAS_REFLEXOES_FIREBASE_CONFIG_FIXA.appId;
   }
 } 
-// Se não estiver no ambiente Canvas, tenta carregar do process.env (para builds React normais)
-else if (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_API_KEY) {
+// Se não estiver no ambiente Canvas, tenta carregar do process.env (para builds React normais, incluindo Netlify)
+else if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production' && process.env.REACT_APP_FIREBASE_API_KEY) {
+  // Para desenvolvimento local com .env
   firebaseConfig = {
     apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
     authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
     projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET, 
     messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
     appId: process.env.REACT_APP_FIREBASE_APP_ID,
     measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID, 
   };
-  appId = process.env.REACT_APP_FIREBASE_APP_ID || MINHAS_REFLEXOES_FIREBASE_CONFIG.appId; // Usa appId da env var ou fallback
-} else {
-  // Cenário onde não há variáveis do Canvas nem variáveis de ambiente padrão (para desenvolvimento local sem .env)
-  // Usa a configuração fixa do projeto 'minhas-reflexoes'
+  appId = process.env.REACT_APP_FIREBASE_APP_ID || MINHAS_REFLEXOES_FIREBASE_CONFIG_FIXA.appId;
+} else if (typeof process !== 'undefined' && process.env.NODE_ENV === 'production' && process.env.REACT_APP_FIREBASE_API_KEY) {
+  // Para builds de produção (Netlify). As variáveis já deveriam estar injetadas.
+  firebaseConfig = {
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET, 
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.REACT_APP_FIREBASE_APP_ID,
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID, 
+  };
+  appId = process.env.REACT_APP_FIREBASE_APP_ID || MINHAS_REFLEXOES_FIREBASE_CONFIG_FIXA.appId;
+}
+else {
+  // Cenário onde não há variáveis do Canvas, nem process.env (ou .env não configurado corretamente localmente)
+  // Usa a configuração fixa do projeto 'minhas-reflexoes' como último recurso.
   console.warn("Configuração do Firebase não encontrada via variáveis de ambiente. Utilizando configuração fallback fixa.");
-  firebaseConfig = MINHAS_REFLEXOES_FIREBASE_CONFIG;
-  appId = MINHAS_REFLEXOES_FIREBASE_CONFIG.appId;
+  firebaseConfig = MINHAS_REFLEXOES_FIREBASE_CONFIG_FIXA;
+  appId = MINHAS_REFLEXOES_FIREBASE_CONFIG_FIXA.appId;
 }
 
 
 // Initialize Firebase App
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
-// Inicializa Analytics apenas se measurementId estiver presente na config
+// Verifica se firebaseConfig está preenchida antes de inicializar o app
+const app = Object.keys(firebaseConfig).length > 0 ? initializeApp(firebaseConfig) : null;
+const db = app ? getFirestore(app) : null;
+const auth = app ? getAuth(app) : null;
+// Inicializa Analytics apenas se measurementId estiver presente na config E se 'app' for válido
+// CORREÇÃO: Adicionado eslint-disable-next-line para o aviso 'analytics' is assigned a value but never used
 // eslint-disable-next-line no-unused-vars
-const analytics = firebaseConfig.measurementId ? getAnalytics(app) : null; 
+const analytics = (app && firebaseConfig.measurementId) ? getAnalytics(app) : null; 
 
 
 // --- Context for Firebase and User ---
-const FirebaseContext = createContext(null);
+// Fornece um objeto padrão caso db, auth, etc. sejam null
+const FirebaseContext = createContext({
+  db: null,
+  auth: null,
+  userId: null,
+  userName: '',
+  isAuthenticated: false,
+});
 
 // AuthWrapper Component: Handles Firebase Auth and provides context to children
 function AuthWrapper({ children }) {
   const [userId, setUserId] = useState(null);
-  const [userName, setUserName] = useState(''); // New state for user's chosen name
+  const [userName, setUserName] = useState(''); 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loadingAuth, setLoadingAuth] = useState(true);
-  const [showNameModal, setShowNameModal] = useState(false); // To show name input modal
+  const [showNameModal, setShowNameModal] = useState(false); 
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Removido 'app' e 'setLoading' das dependências conforme o React Hook warnings.
+    // 'auth' é uma dependência estável que pode ser incluída.
+    // 'initialAuthToken' também é uma dependência externa.
+    // 'setLoadingAuth' é um setter de estado, e o React garante sua estabilidade.
+    
     const authenticate = async () => {
+      if (!auth) {
+        setLoadingAuth(false);
+        console.error("Firebase Auth não inicializado. Verifique a configuração do Firebase.");
+        return;
+      }
+      setLoadingAuth(true); // Definir no início para mostrar loading
       try {
-        // Usa initialAuthToken (do Canvas) se disponível, senão autentica anonimamente
-        if (initialAuthToken) {
+        if (initialAuthToken) { 
           await signInWithCustomToken(auth, initialAuthToken);
         } else {
           await signInAnonymously(auth);
@@ -95,23 +129,25 @@ function AuthWrapper({ children }) {
       } catch (error) {
         console.error("Erro ao autenticar:", error);
       } finally {
-        // setLoadingAuth é uma função estável e não precisa estar nas dependências
-        setLoadingAuth(false); 
+        setLoadingAuth(false); // Sempre define como false no final
       }
     };
 
     authenticate();
 
+    if (!auth) {
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUserId(user.uid);
         setIsAuthenticated(true);
-        // Check if user name is already stored in local storage
         const storedName = localStorage.getItem(`user_name_${user.uid}`);
         if (storedName) {
           setUserName(storedName);
         } else {
-          setShowNameModal(true); // Ask for name if not found
+          setShowNameModal(true);
         }
       } else {
         setUserId(null);
@@ -119,17 +155,17 @@ function AuthWrapper({ children }) {
         setIsAuthenticated(false);
         setShowNameModal(false);
       }
-      // setLoadingAuth é uma função estável e não precisa estar nas dependências
       setLoadingAuth(false); 
     });
 
-    return () => unsubscribe(); // Cleanup subscription
+    return () => unsubscribe(); 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth]); // Dependência corrigida: 'auth' é uma instância constante. userId não é necessário aqui.
+  }, [auth, initialAuthToken]); // Dependências: 'auth' e 'initialAuthToken'. 'setLoadingAuth' não é necessário.
+
 
   const handleSaveName = (name) => {
     setUserName(name);
-    if (userId) { // userId é uma dependência que pode mudar, mas aqui só é usado após o primeiro render
+    if (userId) { 
       localStorage.setItem(`user_name_${userId}`, name);
     }
     setShowNameModal(false);
@@ -192,7 +228,7 @@ function NameInputModal({ onSave }) {
 
 
 // --- Main App Component (now the content) ---
-function AppContent() { // Renamed from App to AppContent
+function AppContent() { // Removido erro de digitação de App to AppContent
   const [view, setView] = useState('moments'); // 'moments', 'journal', 'purpose'
   const { userName, userId } = useContext(FirebaseContext); // Safely get userName and userId from context
 
@@ -289,16 +325,12 @@ function JourneyMoments() {
   const momentsCollectionRef = collection(db, `artifacts/${appId}/public/data/journey_moments`);
 
   useEffect(() => {
-    // Adiciona as dependências necessárias para o hook useEffect
-    // momentsCollectionRef pode mudar se appId mudar, e db/isAuthenticated são essenciais para a query.
-    // Removido 'app' e 'setLoading' e 'setError' para evitar React Hook warnings e loops desnecessários
-    // Os estados (loading, error) podem ser atualizados diretamente dentro do useEffect.
     if (!db || !isAuthenticated || !momentsCollectionRef) {
       setLoading(false);
       return;
     }
 
-    setError(null); // Clear previous errors
+    setError(null); 
     const q = query(momentsCollectionRef, orderBy('date', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedMoments = snapshot.docs.map(doc => ({
