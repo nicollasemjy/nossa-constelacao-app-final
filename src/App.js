@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react'; // Removido useRef
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
@@ -33,7 +33,7 @@ else if (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_API_KE
     apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
     authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
     projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-    cStorageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
     messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
     appId: process.env.REACT_APP_FIREBASE_APP_ID,
     // measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID, // Opcional
@@ -264,7 +264,9 @@ function JourneyMoments() {
   const momentsCollectionRef = collection(db, `artifacts/${appId}/public/data/journey_moments`);
 
   useEffect(() => {
-    if (!db || !isAuthenticated) {
+    // Adiciona as dependências necessárias para o hook useEffect
+    // momentsCollectionRef pode mudar se appId mudar, e db/isAuthenticated são essenciais para a query.
+    if (!db || !isAuthenticated || !momentsCollectionRef) { // Adicionado momentsCollectionRef como verificação
       setLoading(false);
       return;
     }
@@ -285,7 +287,7 @@ function JourneyMoments() {
     });
 
     return () => unsubscribe();
-  }, [db, isAuthenticated]);
+  }, [db, isAuthenticated, momentsCollectionRef]); // Dependências corrigidas
 
   const addMoment = async (e) => {
     e.preventDefault();
@@ -563,7 +565,9 @@ function OurJournal() {
   const journalCollectionRef = collection(db, `artifacts/${appId}/public/data/journal_entries`);
 
   useEffect(() => {
-    if (!db || !isAuthenticated) {
+    // Adiciona as dependências necessárias para o hook useEffect
+    // journalCollectionRef pode mudar se appId mudar, e db/isAuthenticated são essenciais para a query.
+    if (!db || !isAuthenticated || !journalCollectionRef) { // Adicionado journalCollectionRef como verificação
       setLoading(false);
       return;
     }
@@ -584,7 +588,7 @@ function OurJournal() {
     });
 
     return () => unsubscribe();
-  }, [db, isAuthenticated]);
+  }, [db, isAuthenticated, journalCollectionRef]); // Dependências corrigidas
 
   const addEntry = async (e) => {
     e.preventDefault();
@@ -772,7 +776,9 @@ function OurJournal() {
     const purposeDocRef = doc(db, `artifacts/${appId}/public/data/our_purpose`, 'sharedPurpose');
 
     useEffect(() => {
-      if (!db || !isAuthenticated) {
+      // Adiciona as dependências necessárias para o hook useEffect
+      // purposeDocRef pode mudar se appId mudar, e db/isAuthenticated são essenciais para a query.
+      if (!db || !isAuthenticated || !purposeDocRef) { // Adicionado purposeDocRef como verificação
         setLoading(false);
         return;
       }
@@ -792,7 +798,7 @@ function OurJournal() {
       });
 
       return () => unsubscribe();
-    }, [db, isAuthenticated]);
+    }, [db, isAuthenticated, purposeDocRef]); // Dependências corrigidas
 
     const updatePurpose = async (e) => {
       e.preventDefault();
