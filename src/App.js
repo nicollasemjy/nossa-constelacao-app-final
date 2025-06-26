@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext } from 'react'; // Removido useRef
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
