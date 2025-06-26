@@ -26,12 +26,9 @@ const MINHAS_REFLEXOES_FIREBASE_CONFIG_FIXA = {
   measurementId: "G-SNK166LL8P"
 };
 
-
-// Verifica se estamos no ambiente Canvas (onde as variáveis globais são injetadas)
-// Acessa as variáveis de forma segura para evitar ReferenceError
-const isCanvasEnvironment = typeof window !== 'undefined' && typeof window.__app_id !== 'undefined';
-
-if (isCanvasEnvironment) {
+// Lógica de carregamento da configuração do Firebase
+// Prioriza variáveis globais do Canvas se existirem (para o ambiente Canvas)
+if (typeof window !== 'undefined' && typeof window.__app_id !== 'undefined' && typeof window.__firebase_config !== 'undefined') {
   try {
     firebaseConfig = JSON.parse(window.__firebase_config);
     appId = window.__app_id;
@@ -83,7 +80,6 @@ const app = Object.keys(firebaseConfig).length > 0 ? initializeApp(firebaseConfi
 const db = app ? getFirestore(app) : null;
 const auth = app ? getAuth(app) : null;
 // Inicializa Analytics apenas se measurementId estiver presente na config E se 'app' for válido
-// CORREÇÃO: Adicionado eslint-disable-next-line para o aviso 'analytics' is assigned a value but never used
 // eslint-disable-next-line no-unused-vars
 const analytics = (app && firebaseConfig.measurementId) ? getAnalytics(app) : null; 
 
@@ -107,21 +103,16 @@ function AuthWrapper({ children }) {
   const [showNameModal, setShowNameModal] = useState(false); 
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    // Removido 'app' e 'setLoading' das dependências conforme o React Hook warnings.
-    // 'auth' é uma dependência estável que pode ser incluída.
-    // 'initialAuthToken' também é uma dependência externa.
-    // 'setLoadingAuth' é um setter de estado, e o React garante sua estabilidade.
-    
     const authenticate = async () => {
+      // Verifica se 'auth' está inicializado antes de usar
       if (!auth) {
         setLoadingAuth(false);
         console.error("Firebase Auth não inicializado. Verifique a configuração do Firebase.");
         return;
       }
-      setLoadingAuth(true); // Definir no início para mostrar loading
+      setLoadingAuth(true); 
       try {
-        if (initialAuthToken) { 
+        if (initialAuthToken) { // initialAuthToken é do ambiente Canvas
           await signInWithCustomToken(auth, initialAuthToken);
         } else {
           await signInAnonymously(auth);
@@ -129,12 +120,13 @@ function AuthWrapper({ children }) {
       } catch (error) {
         console.error("Erro ao autenticar:", error);
       } finally {
-        setLoadingAuth(false); // Sempre define como false no final
+        setLoadingAuth(false); 
       }
     };
 
     authenticate();
 
+    // Verifica se 'auth' está inicializado antes de usar onAuthStateChanged
     if (!auth) {
       return;
     }
@@ -160,7 +152,7 @@ function AuthWrapper({ children }) {
 
     return () => unsubscribe(); 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth, initialAuthToken]); // Dependências: 'auth' e 'initialAuthToken'. 'setLoadingAuth' não é necessário.
+  }, [auth, initialAuthToken, setLoadingAuth]);
 
 
   const handleSaveName = (name) => {
@@ -615,7 +607,7 @@ function OurJournal() {
   const { db, userId, userName, isAuthenticated } = useContext(FirebaseContext);
   const [entries, setEntries] = useState([]);
   const [newEntryText, setNewEntryText] = useState('');
-  const [loading, setLoading] = true;
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -626,7 +618,7 @@ function OurJournal() {
 
   useEffect(() => {
     // Adiciona as dependências necessárias para o hook useEffect
-    // journalCollectionRef pode mudar se appId mudar, e db/isAuthenticated são essenciais para a query.
+    // journalCollectionRef pode mudar se appId mudar, e
     if (!db || !isAuthenticated || !journalCollectionRef) {
       setLoading(false);
       return;
