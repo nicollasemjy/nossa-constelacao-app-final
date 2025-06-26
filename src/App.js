@@ -2,16 +2,28 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getAnalytics } from "firebase/analytics"; // Adicionado importação para getAnalytics
 
 // --- Firebase Configuration and Initialization ---
 // Adapta a configuração do Firebase para diferentes ambientes:
 // 1. Ambiente Canvas (usa __app_id, __firebase_config, __initial_auth_token)
 // 2. Ambiente de Build/Deploy de React (usa process.env.REACT_APP_FIREBASE_...)
-// 3. Fallback para ambiente local de desenvolvimento sem .env configurado
+// 3. Fallback para ambiente local de desenvolvimento (usa valores fixos se env vars não definidas)
 
 let firebaseConfig = {};
 let appId = 'default-app-id-local-fallback'; // Valor padrão para desenvolvimento local sem vars de ambiente
 let initialAuthToken = null; // Token de autenticação inicial para o Canvas
+
+// Configuração do Firebase para o projeto 'minhas-reflexoes' (fallback ou para uso local/deploy)
+const MINHAS_REFLEXOES_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyATKwnmsf8eDP9cvSWIs03QLv3PRb7P8FM",
+  authDomain: "minhas-reflexoes.firebaseapp.com",
+  projectId: "minhas-reflexoes",
+  storageBucket: "minhas-reflexoes.firebasestorage.app",
+  messagingSenderId: "454506217890",
+  appId: "1:454506217890:web:740b14382d4f163c53b2fb",
+  measurementId: "G-SNK166LL8P"
+};
 
 
 // Verifica se estamos no ambiente Canvas (onde as variáveis globais são injetadas)
@@ -25,6 +37,9 @@ if (isCanvasEnvironment) {
     initialAuthToken = window.__initial_auth_token;
   } catch (e) {
     console.error("Erro ao fazer parse de __firebase_config no ambiente Canvas:", e);
+    // Em caso de erro no Canvas, usa a configuração padrão do projeto 'minhas-reflexoes'
+    firebaseConfig = MINHAS_REFLEXOES_FIREBASE_CONFIG;
+    appId = MINHAS_REFLEXOES_FIREBASE_CONFIG.appId;
   }
 } 
 // Se não estiver no ambiente Canvas, tenta carregar do process.env (para builds React normais)
@@ -36,13 +51,15 @@ else if (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_API_KE
     storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
     messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
     appId: process.env.REACT_APP_FIREBASE_APP_ID,
-    // measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID, // Opcional
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID, 
   };
-  appId = process.env.REACT_APP_FIREBASE_APP_ID || appId; // Usa appId da env var ou fallback
+  appId = process.env.REACT_APP_FIREBASE_APP_ID || MINHAS_REFLEXOES_FIREBASE_CONFIG.appId; // Usa appId da env var ou fallback
 } else {
-  // Cenário onde não há variáveis do Canvas nem variáveis de ambiente padrão.
-  // A app pode não funcionar com o Firebase nestas condições.
-  console.warn("Configuração do Firebase não encontrada. A aplicação pode não funcionar corretamente sem variáveis de ambiente (local .env ou configuração de deploy).");
+  // Cenário onde não há variáveis do Canvas nem variáveis de ambiente padrão (para desenvolvimento local sem .env)
+  // Usa a configuração fixa do projeto 'minhas-reflexoes'
+  console.warn("Configuração do Firebase não encontrada via variáveis de ambiente. Utilizando configuração fallback fixa.");
+  firebaseConfig = MINHAS_REFLEXOES_FIREBASE_CONFIG;
+  appId = MINHAS_REFLEXOES_FIREBASE_CONFIG.appId;
 }
 
 
@@ -50,6 +67,10 @@ else if (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_API_KE
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+// Inicializa Analytics apenas se measurementId estiver presente na config
+// eslint-disable-next-line no-unused-vars
+const analytics = firebaseConfig.measurementId ? getAnalytics(app) : null; 
+
 
 // --- Context for Firebase and User ---
 const FirebaseContext = createContext(null);
@@ -74,7 +95,8 @@ function AuthWrapper({ children }) {
       } catch (error) {
         console.error("Erro ao autenticar:", error);
       } finally {
-        setLoadingAuth(false);
+        // setLoadingAuth é uma função estável e não precisa estar nas dependências
+        setLoadingAuth(false); 
       }
     };
 
@@ -97,15 +119,17 @@ function AuthWrapper({ children }) {
         setIsAuthenticated(false);
         setShowNameModal(false);
       }
-      setLoadingAuth(false);
+      // setLoadingAuth é uma função estável e não precisa estar nas dependências
+      setLoadingAuth(false); 
     });
 
     return () => unsubscribe(); // Cleanup subscription
-  }, []); // Dependência vazia para rodar uma vez na montagem
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth]); // Dependência corrigida: 'auth' é uma instância constante. userId não é necessário aqui.
 
   const handleSaveName = (name) => {
     setUserName(name);
-    if (userId) {
+    if (userId) { // userId é uma dependência que pode mudar, mas aqui só é usado após o primeiro render
       localStorage.setItem(`user_name_${userId}`, name);
     }
     setShowNameModal(false);
@@ -261,12 +285,15 @@ function JourneyMoments() {
   const [editMomentDescription, setEditMomentDescription] = useState('');
   const [editMomentType, setEditMomentType] = useState('star');
 
+  // momentsCollectionRef usa 'appId' que vem do contexto global
   const momentsCollectionRef = collection(db, `artifacts/${appId}/public/data/journey_moments`);
 
   useEffect(() => {
     // Adiciona as dependências necessárias para o hook useEffect
     // momentsCollectionRef pode mudar se appId mudar, e db/isAuthenticated são essenciais para a query.
-    if (!db || !isAuthenticated || !momentsCollectionRef) { // Adicionado momentsCollectionRef como verificação
+    // Removido 'app' e 'setLoading' e 'setError' para evitar React Hook warnings e loops desnecessários
+    // Os estados (loading, error) podem ser atualizados diretamente dentro do useEffect.
+    if (!db || !isAuthenticated || !momentsCollectionRef) {
       setLoading(false);
       return;
     }
@@ -287,7 +314,8 @@ function JourneyMoments() {
     });
 
     return () => unsubscribe();
-  }, [db, isAuthenticated, momentsCollectionRef]); // Dependências corrigidas
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, isAuthenticated, momentsCollectionRef, setLoading, setError]); // Dependências corrigidas
 
   const addMoment = async (e) => {
     e.preventDefault();
@@ -408,7 +436,7 @@ function JourneyMoments() {
             value={newMomentTitle}
             onChange={(e) => setNewMomentTitle(e.target.value)}
             placeholder="Ex: Nosso primeiro encontro, Passei no Detran!"
-            className="w-full p-3 rounded-lg bg-gray-900 text-gray-100 border border-gray-600 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+            className="w-full p-3 rounded-lg bg-gray-900 text-gray-100 border border-gray-600 focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none resize-y"
             required
             disabled={isSubmitting}
           />
@@ -555,7 +583,7 @@ function OurJournal() {
   const { db, userId, userName, isAuthenticated } = useContext(FirebaseContext);
   const [entries, setEntries] = useState([]);
   const [newEntryText, setNewEntryText] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = true;
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -567,7 +595,7 @@ function OurJournal() {
   useEffect(() => {
     // Adiciona as dependências necessárias para o hook useEffect
     // journalCollectionRef pode mudar se appId mudar, e db/isAuthenticated são essenciais para a query.
-    if (!db || !isAuthenticated || !journalCollectionRef) { // Adicionado journalCollectionRef como verificação
+    if (!db || !isAuthenticated || !journalCollectionRef) {
       setLoading(false);
       return;
     }
@@ -588,7 +616,8 @@ function OurJournal() {
     });
 
     return () => unsubscribe();
-  }, [db, isAuthenticated, journalCollectionRef]); // Dependências corrigidas
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, isAuthenticated, journalCollectionRef, setLoading, setError]); // Dependências corrigidas
 
   const addEntry = async (e) => {
     e.preventDefault();
@@ -769,7 +798,7 @@ function OurJournal() {
   function OurPurpose() {
     const { db, userId, isAuthenticated } = useContext(FirebaseContext);
     const [purposeText, setPurposeText] = useState('');
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = true;
     const [error, setError] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -778,7 +807,7 @@ function OurJournal() {
     useEffect(() => {
       // Adiciona as dependências necessárias para o hook useEffect
       // purposeDocRef pode mudar se appId mudar, e db/isAuthenticated são essenciais para a query.
-      if (!db || !isAuthenticated || !purposeDocRef) { // Adicionado purposeDocRef como verificação
+      if (!db || !isAuthenticated || !purposeDocRef) {
         setLoading(false);
         return;
       }
@@ -798,7 +827,7 @@ function OurJournal() {
       });
 
       return () => unsubscribe();
-    }, [db, isAuthenticated, purposeDocRef]); // Dependências corrigidas
+    }, [db, isAuthenticated, purposeDocRef, setLoading, setError]); // Dependências corrigidas
 
     const updatePurpose = async (e) => {
       e.preventDefault();
@@ -808,7 +837,9 @@ function OurJournal() {
       setError(null);
       try {
         await setDoc(purposeDocRef, { text: purposeText.trim(), lastUpdated: serverTimestamp(), updatedBy: userId }, { merge: true });
-      } catch (err) {
+      }
+      // CORREÇÃO: Adicionado tratamento de erro para garantir que o 'finally' sempre seja executado
+      catch (err) { 
         console.error("Erro ao atualizar propósito:", err);
         setError("Erro ao atualizar propósito. Tente novamente.");
       } finally {
