@@ -13,12 +13,16 @@ let firebaseConfig = {};
 let appId = 'default-app-id-local-fallback'; // Valor padrão para desenvolvimento local sem vars de ambiente
 let initialAuthToken = null; // Token de autenticação inicial para o Canvas
 
-// Prioriza variáveis do ambiente Canvas, se existirem
-if (typeof __app_id !== 'undefined' && typeof __firebase_config !== 'undefined') {
+
+// Verifica se estamos no ambiente Canvas (onde as variáveis globais são injetadas)
+// Acessa as variáveis de forma segura para evitar ReferenceError
+const isCanvasEnvironment = typeof window !== 'undefined' && typeof window.__app_id !== 'undefined';
+
+if (isCanvasEnvironment) {
   try {
-    firebaseConfig = JSON.parse(__firebase_config);
-    appId = __app_id;
-    initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    firebaseConfig = JSON.parse(window.__firebase_config);
+    appId = window.__app_id;
+    initialAuthToken = window.__initial_auth_token;
   } catch (e) {
     console.error("Erro ao fazer parse de __firebase_config no ambiente Canvas:", e);
   }
@@ -29,12 +33,12 @@ else if (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_API_KE
     apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
     authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
     projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+    cStorageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
     messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
     appId: process.env.REACT_APP_FIREBASE_APP_ID,
     // measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID, // Opcional
   };
-  appId = process.env.REACT_APP_FIREBASE_APP_ID || appId; // Usa appId da env var ou o fallback
+  appId = process.env.REACT_APP_FIREBASE_APP_ID || appId; // Usa appId da env var ou fallback
 } else {
   // Cenário onde não há variáveis do Canvas nem variáveis de ambiente padrão.
   // A app pode não funcionar com o Firebase nestas condições.
